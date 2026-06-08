@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: hms-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: hms
+    ports:
+      - "5432:5432"
+    volumes:
+      - hms-db-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: hms-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - hms-redis-data:/data
+
+  # Backend (NestJS) will be added here in production or using its own Dockerfile
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: apps/api/Dockerfile
+  #   ports:
+  #     - "3001:3001"
+  #   depends_on:
+  #     - db
+  #     - redis
+
+  # Frontend (Next.js) will be added here in production
+  # web:
+  #   build:
+  #     context: .
+  #     dockerfile: apps/web/Dockerfile
+  #   ports:
+  #     - "3000:3000"
+
+volumes:
+  hms-db-data:
+  hms-redis-data:
