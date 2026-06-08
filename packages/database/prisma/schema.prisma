@@ -1,0 +1,350 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------
+// TENANT & CORE INFRASTRUCTURE
+// ---------------------------------------------------------
+model Hospital {
+  id          String   @id @default(uuid())
+  name        String
+  logoUrl     String?
+  email       String   @unique
+  phone       String
+  address     String
+  city        String
+  state       String
+  country     String
+  zipCode     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isActive    Boolean  @default(true)
+
+  branches    Branch[]
+  users       User[]
+}
+
+model Branch {
+  id          String   @id @default(uuid())
+  hospitalId  String
+  hospital    Hospital @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  name        String
+  email       String
+  phone       String
+  address     String
+  city        String
+  state       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isActive    Boolean  @default(true)
+
+  departments Department[]
+  users       User[]
+  patients    Patient[]
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  branchId    String
+  branch      Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+
+  staff       StaffProfile[]
+  rooms       Room[]
+}
+
+// ---------------------------------------------------------
+// USER & RBAC
+// ---------------------------------------------------------
+enum RoleType {
+  SUPER_ADMIN
+  HOSPITAL_ADMIN
+  DOCTOR
+  NURSE
+  RECEPTIONIST
+  PHARMACIST
+  LAB_TECHNICIAN
+  RADIOLOGIST
+  HR_MANAGER
+  ACCOUNTANT
+  PATIENT
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  role         RoleType
+  
+  hospitalId   String?
+  hospital     Hospital? @relation(fields: [hospitalId], references: [id])
+  branchId     String?
+  branch       Branch?   @relation(fields: [branchId], references: [id])
+
+  isTwoFactorEnabled Boolean @default(false)
+  twoFactorSecret    String?
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  isActive     Boolean   @default(true)
+
+  staffProfile StaffProfile?
+  patientInfo  Patient?  @relation("UserPatient")
+  auditLogs    AuditLog[]
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  action      String
+  entity      String
+  entityId    String
+  details     Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+}
+
+// ---------------------------------------------------------
+// STAFF & DOCTORS
+// ---------------------------------------------------------
+model StaffProfile {
+  id              String     @id @default(uuid())
+  userId          String     @unique
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentId    String?
+  department      Department? @relation(fields: [departmentId], references: [id])
+  
+  qualification   String?
+  specialization  String?
+  experienceYears Int?
+  registrationNo  String?
+  consultationFee Float?
+  
+  joinedAt        DateTime   @default(now())
+  
+  appointments    Appointment[]
+  schedules       Schedule[]
+}
+
+model Schedule {
+  id            String       @id @default(uuid())
+  staffId       String
+  staff         StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  dayOfWeek     Int          // 0 = Sunday, 1 = Monday
+  startTime     String       // HH:mm
+  endTime       String       // HH:mm
+  slotDuration  Int          // in minutes
+  isActive      Boolean      @default(true)
+}
+
+// ---------------------------------------------------------
+// PATIENT MANAGEMENT
+// ---------------------------------------------------------
+model Patient {
+  id               String   @id @default(uuid())
+  uhid             String   @unique // Unique Health ID
+  userId           String?  @unique
+  user             User?    @relation("UserPatient", fields: [userId], references: [id])
+  branchId         String
+  branch           Branch   @relation(fields: [branchId], references: [id])
+  
+  firstName        String
+  lastName         String
+  gender           String
+  dob              DateTime
+  bloodGroup       String?
+  aadhaarId        String?  @unique
+  address          String
+  mobile           String
+  emergencyContact String?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  allergies        Allergy[]
+  medicalHistory   MedicalHistory[]
+  appointments     Appointment[]
+  admissions       IPDAdmission[]
+  prescriptions    Prescription[]
+  invoices         Invoice[]
+}
+
+model Allergy {
+  id        String  @id @default(uuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  severity  String
+  notes     String?
+}
+
+model MedicalHistory {
+  id          String  @id @default(uuid())
+  patientId   String
+  patient     Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  condition   String
+  diagnosedAt DateTime?
+  notes       String?
+}
+
+// ---------------------------------------------------------
+// APPOINTMENTS & OPD
+// ---------------------------------------------------------
+enum AppointmentStatus {
+  BOOKED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Appointment {
+  id              String            @id @default(uuid())
+  patientId       String
+  patient         Patient           @relation(fields: [patientId], references: [id])
+  doctorId        String
+  doctor          StaffProfile      @relation(fields: [doctorId], references: [id])
+  
+  appointmentDate DateTime
+  timeSlot        String            // HH:mm
+  status          AppointmentStatus @default(BOOKED)
+  tokenNumber     Int?
+  notes           String?
+  
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  opdVisit        OPDVisit?
+}
+
+model OPDVisit {
+  id            String      @id @default(uuid())
+  appointmentId String      @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  
+  symptoms      String?
+  diagnosis     String?
+  notes         String?
+  
+  createdAt     DateTime    @default(now())
+  
+  prescription  Prescription?
+}
+
+// ---------------------------------------------------------
+// CLINICAL & PHARMACY
+// ---------------------------------------------------------
+model Prescription {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  opdVisitId  String?  @unique
+  opdVisit    OPDVisit? @relation(fields: [opdVisitId], references: [id])
+  
+  notes       String?
+  createdAt   DateTime @default(now())
+  
+  items       PrescriptionItem[]
+}
+
+model PrescriptionItem {
+  id             String       @id @default(uuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  medicineName   String
+  dosage         String
+  frequency      String
+  durationDays   Int
+  instructions   String?
+}
+
+// ---------------------------------------------------------
+// IPD & BED MANAGEMENT
+// ---------------------------------------------------------
+model Room {
+  id           String     @id @default(uuid())
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  roomNumber   String
+  type         String     // GENERAL, PRIVATE, ICU
+  floor        String?
+  
+  beds         Bed[]
+}
+
+model Bed {
+  id         String   @id @default(uuid())
+  roomId     String
+  room       Room     @relation(fields: [roomId], references: [id])
+  bedNumber  String
+  status     String   @default("AVAILABLE") // AVAILABLE, OCCUPIED, CLEANING
+  
+  admissions IPDAdmission[]
+}
+
+model IPDAdmission {
+  id          String    @id @default(uuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id])
+  bedId       String
+  bed         Bed       @relation(fields: [bedId], references: [id])
+  
+  admittedAt  DateTime  @default(now())
+  dischargedAt DateTime?
+  reason      String
+  status      String    @default("ADMITTED") // ADMITTED, DISCHARGED
+  
+  vitals      VitalSign[]
+}
+
+model VitalSign {
+  id           String       @id @default(uuid())
+  admissionId  String
+  admission    IPDAdmission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  temperature  Float?
+  pulse        Int?
+  bloodPressure String?
+  respiratoryRate Int?
+  spO2         Float?
+  recordedAt   DateTime     @default(now())
+}
+
+// ---------------------------------------------------------
+// BILLING & INVOICES
+// ---------------------------------------------------------
+model Invoice {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  totalAmount Float
+  taxAmount   Float
+  discount    Float    @default(0)
+  finalAmount Float
+  status      String   @default("PENDING") // PENDING, PAID, PARTIAL
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  items       InvoiceItem[]
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Int     @default(1)
+  unitPrice   Float
+  total       Float
+}

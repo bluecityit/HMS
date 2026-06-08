@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hms-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hms-web
+  template:
+    metadata:
+      labels:
+        app: hms-web
+    spec:
+      containers:
+      - name: hms-web
+        image: your-docker-registry/hms-web:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "http://api.hms.local"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hms-web-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: hms-web
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
